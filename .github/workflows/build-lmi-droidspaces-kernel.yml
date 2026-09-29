@@ -12,7 +12,7 @@ on:
 
 jobs:
   build-kernel:
-    name: Build lmi | KSU:true | OS:miui
+    name: Build lmi | KSU:false (keep Magisk) | OS:miui
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -118,14 +118,19 @@ jobs:
         working-directory: kernel
         run: |
           chmod +x build_kernel.sh
-          echo "Executing: ./build_kernel.sh lmi ksu miui"
-          ./build_kernel.sh lmi ksu miui
+          # 不带 ksu：ReSukiSU main 分支默认配 tracepoint hook，与 4.19 non-GKI 不兼容
+          # （drivers/kernelsu/Kbuild 直接 $(error) 中断）。本机已用 Magisk root，
+          # Droidspaces 官方支持 Magisk（需在 App 内开 Daemon Mode），故不引入 KSU。
+          echo "Executing: ./build_kernel.sh lmi miui"
+          ./build_kernel.sh lmi miui
 
       - name: Show build outputs
         if: always()
         run: |
           echo "--- APTKernel zip ---"
           ls -lh kernel/APTKernel_*.zip 2>/dev/null || echo "(no zip produced)"
+          echo "--- zip 内容（AnyKernel3 必须同时含 Image/dtb/dtbo.img）---"
+          unzip -l kernel/APTKernel_*.zip 2>/dev/null | grep -E 'kernels/|Image|dtb' || true
 
       - name: Upload Flashable ZIP
         uses: actions/upload-artifact@v7
