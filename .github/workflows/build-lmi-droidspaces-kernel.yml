@@ -86,6 +86,15 @@ jobs:
           CONFIG_KCMP=y
           CONFIG_SCHED_AUTOGROUP=y
           EOF
+          # ABI 对齐：厂商模块靠 MODVERSIONS 的 CRC 校验加载，而 struct module 的布局
+          # 受 MODULE_SIG / JUMP_LABEL 影响。原厂为 MODULE_SIG=y、JUMP_LABEL=n，
+          # 本树 defconfig 恰好相反，导致 module_layout 的 CRC 不匹配、模块被拒（实测确认）。
+          cat >> kernel/droidspaces.config <<'EOF'
+          # --- 使 struct module 与原厂一致，避免 module_layout CRC 不匹配 ---
+          CONFIG_MODULE_SIG=y
+          CONFIG_MODULE_SIG_ALL=y
+          # CONFIG_JUMP_LABEL is not set
+          EOF
           grep -q '^CONFIG_USER_NS=y' kernel/droidspaces.config || { echo "FAIL: 补充片段未写入"; exit 1; }
           echo "[+] 片段已扩展到 $(grep -c '^CONFIG_.*=y' kernel/droidspaces.config) 项"
 
@@ -134,7 +143,9 @@ jobs:
           if [ ! -f "$CFG" ]; then echo "FATAL: $CFG 不存在"; exit 1; fi
           cp "$CFG" "$GITHUB_WORKSPACE/final-lmi.config"
           echo "=== 设备 / MIUI / 本地化相关 ==="
-          grep -E '^CONFIG_(LOCALVERSION|XIAOMI_MIUI|MACH_XIAOMI_LMI|SF_BINDER|MIGT|MILLET|MIHW|RTMM|PERF_HELPER|KPERFEVENTS)=' "$CFG" || true
+          grep -E '^CONFIG_(LOCALVERSION|XIAOMI_MIUI|MACH_XIAOMI_LMI|SF_BINDER|MIGT|MILLET|MIHW|RTMM|PERF_HELPER|KPERFEVENTS|MODULE_SIG|JUMP_LABEL|MODVERSIONS)=' "$CFG" || true
+          echo "--- JUMP_LABEL / MODULE_SIG 是否等于原厂(MODULE_SIG=y, JUMP_LABEL=n) ---"
+          grep -E '^(# )?CONFIG_(JUMP_LABEL|MODULE_SIG|MODULE_SIG_ALL)( |$)' "$CFG" || true
           echo "=== 容器关键项 ==="
           grep -E '^CONFIG_(USER_NS|PID_NS|IPC_NS|NET_NS|CGROUP_NS|SYSVIPC|POSIX_MQUEUE|DEVTMPFS|NF_TABLES|NETFILTER_XT_MARK|DEVPTS_MULTIPLE_INSTANCES|CHECKPOINT_RESTORE|SCHED_AUTOGROUP)=' "$CFG" || true
           echo "=== 必需项逐项校验（本树无此符号者记为 N/A，不算失败）==="
