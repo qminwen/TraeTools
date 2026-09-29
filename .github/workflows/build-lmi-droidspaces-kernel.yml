@@ -52,11 +52,42 @@ jobs:
           grep -q 'CGRP_ROOT_NOPREFIX' kernel/cgroup/cgroup.c || { echo "FAIL: cgroup fix missing"; exit 1; }
           grep -q 'rawdata_show' drivers/input/keyboard/nanosic_driver_v2/nano_macro.h || { echo "FAIL: nano_macro.h missing"; exit 1; }
           grep -q '^CONFIG_PID_NS=y' droidspaces.config || { echo "FAIL: droidspaces.config missing CONFIG_PID_NS"; exit 1; }
-          grep -q '^CONFIG_USER_NS=y' droidspaces.config || { echo "FAIL: droidspaces.config missing CONFIG_USER_NS"; exit 1; }
           grep -q 'kernfs_create_link' fix_restore_cgroup_file_prefix_handling.cocci || { echo "FAIL: cgroup cocci fix missing"; exit 1; }
           # lmi_defconfig 现状确认：PID_NS 未开启属预期，靠 droidspaces.config 合并补齐
           grep -c 'CONFIG_PID_NS' arch/arm64/configs/lmi_defconfig || true
           echo "[+] All patches verified OK"
+
+      # 上游 droidspaces.config 只覆盖了 Droidspaces 本体所需项；pipa 之所以能用，
+      # 是因为 patch 仓库直接整份替换了 pipa_defconfig（多出 44 项）。lmi 用的是源码仓库
+      # 自带 defconfig，所以这里把上游"未被片段覆盖"的 19 项补齐，否则嵌套 Docker 会残废
+      # （缺 USER_NS→unsafe procfs、缺 XT_MARK→fwmark 规则、缺 devpts 多实例→PTY 隔离等）
+      - name: Extend config fragment for lmi (Docker support)
+        run: |
+          cat >> kernel/droidspaces.config <<'EOF'
+
+          # --- lmi 补充：对齐 pipa_defconfig 中未被 droidspaces.config 覆盖的项 ---
+          CONFIG_USER_NS=y
+          CONFIG_IP6_NF_NAT=y
+          CONFIG_IP6_NF_TARGET_MASQUERADE=y
+          CONFIG_IP_VS=y
+          CONFIG_NETFILTER_XT_MATCH_IPVS=y
+          CONFIG_NETFILTER_XT_MARK=y
+          CONFIG_MEMCG_SWAP_ENABLED=y
+          CONFIG_CGROUP_PERF=y
+          CONFIG_CGROUP_HUGETLB=y
+          CONFIG_NET_CLS_CGROUP=y
+          CONFIG_NFT_CT=y
+          CONFIG_NFT_FIB=y
+          CONFIG_NFT_MASQ=y
+          CONFIG_NFT_NAT=y
+          CONFIG_DEVPTS_MULTIPLE_INSTANCES=y
+          CONFIG_CGROUP_NS=y
+          CONFIG_CHECKPOINT_RESTORE=y
+          CONFIG_KCMP=y
+          CONFIG_SCHED_AUTOGROUP=y
+          EOF
+          grep -q '^CONFIG_USER_NS=y' kernel/droidspaces.config || { echo "FAIL: 补充片段未写入"; exit 1; }
+          echo "[+] 片段已扩展到 $(grep -c '^CONFIG_.*=y' kernel/droidspaces.config) 项"
 
       - name: Set up Environment
         run: |
