@@ -124,6 +124,35 @@ jobs:
           echo "Executing: ./build_kernel.sh lmi miui"
           ./build_kernel.sh lmi miui
 
+      - name: Gate - verify real .config (必须直接读 out_miui/.config)
+        if: always()
+        working-directory: kernel
+        run: |
+          # MIUI 目标下 kernel/Makefile 会把 lmi_stock-defconfig 伪装成 /proc/config.gz 的内容，
+          # 且本树走的是 AOSP 分支的假配置，故镜像内嵌配置完全不可信，只能查真实 .config
+          CFG=out_miui/.config
+          if [ ! -f "$CFG" ]; then echo "FATAL: $CFG 不存在"; exit 1; fi
+          cp "$CFG" "$GITHUB_WORKSPACE/final-lmi.config"
+          echo "=== 设备 / MIUI / 本地化相关 ==="
+          grep -E '^CONFIG_(LOCALVERSION|XIAOMI_MIUI|MACH_XIAOMI_LMI|SF_BINDER|MIGT|MILLET|MIHW|RTMM|PERF_HELPER|KPERFEVENTS)=' "$CFG" || true
+          echo "=== 容器关键项 ==="
+          grep -E '^CONFIG_(USER_NS|PID_NS|IPC_NS|NET_NS|CGROUP_NS|SYSVIPC|POSIX_MQUEUE|DEVTMPFS|NF_TABLES|NETFILTER_XT_MARK|DEVPTS_MULTIPLE_INSTANCES|CHECKPOINT_RESTORE|SCHED_AUTOGROUP)=' "$CFG" || true
+          echo "=== 必需项逐项校验 ==="
+          missing=0
+          for s in SYSCTL SYSVIPC POSIX_MQUEUE NAMESPACES PID_NS UTS_NS IPC_NS USER_NS NET_NS SECCOMP SECCOMP_FILTER CGROUPS CGROUP_DEVICE CGROUP_PIDS MEMCG CGROUP_SCHED FAIR_GROUP_SCHED CGROUP_FREEZER CGROUP_NET_PRIO DEVTMPFS OVERLAY_FS TMPFS_POSIX_ACL TMPFS_XATTR FW_LOADER FW_LOADER_USER_HELPER FW_LOADER_COMPRESS VETH BRIDGE BRIDGE_NETFILTER NETFILTER_ADVANCED NF_CONNTRACK IP_NF_IPTABLES IP_NF_FILTER NF_NAT NF_TABLES IP_NF_TARGET_MASQUERADE NETFILTER_XT_TARGET_MASQUERADE NETFILTER_XT_TARGET_TCPMSS NETFILTER_XT_MATCH_ADDRTYPE NF_CONNTRACK_NETLINK NF_NAT_REDIRECT IP_ADVANCED_ROUTER IP_MULTIPLE_TABLES IP_NF_NAT IP6_NF_NAT IP6_NF_TARGET_MASQUERADE NETFILTER_XT_MARK NETFILTER_XT_MATCH_IPVS IP_VS MEMCG_SWAP_ENABLED CGROUP_PERF CGROUP_HUGETLB NET_CLS_CGROUP NFT_CT NFT_FIB NFT_MASQ NFT_NAT DEVPTS_MULTIPLE_INSTANCES CGROUP_NS CHECKPOINT_RESTORE KCMP SCHED_AUTOGROUP BLK_DEV_LOOP EXT4_FS; do
+            grep -q "^CONFIG_${s}=y$" "$CFG" || { echo "MISSING: CONFIG_${s}"; missing=$((missing+1)); }
+          done
+          echo "缺失计数: $missing"
+          [ "$missing" -eq 0 ] || exit 1
+
+      - name: Upload final .config
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: final-lmi-config-${{ github.run_id }}
+          path: final-lmi.config
+          retention-days: 30
+
       - name: Show build outputs
         if: always()
         run: |
